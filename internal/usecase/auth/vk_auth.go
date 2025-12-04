@@ -1,0 +1,247 @@
+package auth
+
+import (
+	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
+	"fmt"
+	"net/url"
+	"sort"
+	"strings"
+	"time"
+
+	"github.com/gdugdh24/mpit2026-backend/internal/domain"
+	"github.com/gdugdh24/mpit2026-backend/internal/repository"
+	"github.com/golang-jwt/jwt/v5"
+)
+
+type VKAuthUseCase struct {
+	userRepo    repository.UserRepository
+	sessionRepo repository.SessionRepository
+	vkSecret    string
+	jwtSecret   string
+}
+
+func NewVKAuthUseCase(
+	userRepo repository.UserRepository,
+	sessionRepo repository.SessionRepository,
+	vkSecret string,
+	jwtSecret string,
+) *VKAuthUseCase {
+	return &VKAuthUseCase{
+		userRepo:    userRepo,
+		sessionRepo: sessionRepo,
+		vkSecret:    vkSecret,
+		jwtSecret:   jwtSecret,
+	}
+}
+
+// VKLaunchParams represents VK Mini App launch parameters
+type VKLaunchParams struct {
+	VKID           int       `json:"vk_user_id"`
+	AppID          int       `json:"vk_app_id"`
+	IsAppUser      int       `json:"vk_is_app_user"`
+	AreNotificationsEnabled int `json:"vk_are_notifications_enabled"`
+	Language       string    `json:"vk_language"`
+	Platform       string    `json:"vk_platform"`
+	AccessTokenSettings string `json:"vk_access_token_settings"`
+	Sign           string    `json:"sign"`
+}
+
+// AuthResponse represents the authentication response
+type AuthResponse struct {
+	Token     string       `json:"token"`
+	ExpiresAt time.Time    `json:"expires_at"`
+	User      *domain.User `json:"user"`
+	IsNewUser bool         `json:"is_new_user"`
+}
+
+// AuthenticateVK authenticates user via VK Mini App launch params
+func (uc *VKAuthUseCase) AuthenticateVK(ctx context.Context, params map[string]string, deviceInfo, ipAddress string) (*AuthResponse, error) {
+	// Verify VK signature
+	if err := uc.verifyVKSignature(params); err != nil {
+		return nil, domain.ErrInvalidVKSignature
+	}
+
+	vkID := 0
+	fmt.Sscanf(params["vk_user_id"], "%d", &vkID)
+	if vkID == 0 {
+		return nil, domain.ErrInvalidInput
+	}
+
+	// Try to get existing user
+	user, err := uc.userRepo.GetByVKID(ctx, vkID)
+	isNewUser := false
+
+	if err == domain.ErrUserNotFound {
+		// Create new user
+		user, err = uc.createUserFromVK(ctx, vkID, params)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create user: %w", err)
+		}
+		isNewUser = true
+	} else if err != nil {
+		return nil, fmt.Errorf("failed to get user: %w", err)
+	}
+
+	// Update online status
+	if err := uc.userRepo.UpdateOnlineStatus(ctx, user.ID, true); err != nil {
+		return nil, fmt.Errorf("failed to update online status: %w", err)
+	}
+
+	// Create session
+	token, expiresAt, err := uc.createSession(ctx, user.ID, deviceInfo, ipAddress)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create session: %w", err)
+	}
+
+	return &AuthResponse{
+		Token:     token,
+		ExpiresAt: expiresAt,
+		User:      user,
+		IsNewUser: isNewUser,
+	}, nil
+}
+
+// verifyVKSignature verifies VK Mini App launch params signature
+func (uc *VKAuthUseCase) verifyVKSignature(params map[string]string) error {
+	sign := params["sign"]
+	if sign == "" {
+		return domain.ErrInvalidVKSignature
+	}
+
+	// Create query string from params (excluding sign)
+	var keys []string
+	for k := range params {
+		if k != "sign" && strings.HasPrefix(k, "vk_") {
+			keys = append(keys, k)
+		}
+	}
+	sort.Strings(keys)
+
+	var queryString strings.Builder
+	for i, k := range keys {
+		if i > 0 {
+			queryString.WriteString("&")
+		}
+		queryString.WriteString(k)
+		queryString.WriteString("=")
+		queryString.WriteString(url.QueryEscape(params[k]))
+	}
+
+	// Calculate HMAC-SHA256
+	h := hmac.New(sha256.New, []byte(uc.vkSecret))
+	h.Write([]byte(queryString.String()))
+	calculatedSign := base64.URLEncoding.EncodeToString(h.Sum(nil))
+	calculatedSign = strings.TrimRight(calculatedSign, "=")
+	calculatedSign = strings.ReplaceAll(calculatedSign, "+", "-")
+	calculatedSign = strings.ReplaceAll(calculatedSign, "/", "_")
+
+	if sign != calculatedSign {
+		return domain.ErrInvalidVKSignature
+	}
+
+	return nil
+}
+
+// createUserFromVK creates a new user from VK params
+func (uc *VKAuthUseCase) createUserFromVK(ctx context.Context, vkID int, params map[string]string) (*domain.User, error) {
+	// Default values - in real app you'd fetch from VK API
+	user := &domain.User{
+		VKID:       vkID,
+		Gender:     domain.GenderMale, // Should be fetched from VK API
+		BirthDate:  time.Now().AddDate(-20, 0, 0), // Should be fetched from VK API
+		IsVerified: false,
+		IsOnline:   true,
+	}
+
+	if err := uc.userRepo.Create(ctx, user); err != nil {
+		return nil, err
+	}
+
+	return user, nil
+}
+
+// createSession creates a new session and returns JWT token
+func (uc *VKAuthUseCase) createSession(ctx context.Context, userID int, deviceInfo, ipAddress string) (string, time.Time, error) {
+	expiresAt := time.Now().Add(24 * 7 * time.Hour) // 7 days
+
+	// Generate JWT token
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"user_id": userID,
+		"exp":     expiresAt.Unix(),
+		"iat":     time.Now().Unix(),
+	})
+
+	tokenString, err := token.SignedString([]byte(uc.jwtSecret))
+	if err != nil {
+		return "", time.Time{}, err
+	}
+
+	// Create session in DB
+	session := &domain.Session{
+		UserID:     userID,
+		Token:      uc.hashToken(tokenString),
+		DeviceInfo: &deviceInfo,
+		IPAddress:  &ipAddress,
+		ExpiresAt:  expiresAt,
+	}
+
+	if err := uc.sessionRepo.Create(ctx, session); err != nil {
+		return "", time.Time{}, err
+	}
+
+	return tokenString, expiresAt, nil
+}
+
+// VerifyToken verifies JWT token and returns user ID
+func (uc *VKAuthUseCase) VerifyToken(ctx context.Context, tokenString string) (int, error) {
+	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, domain.ErrInvalidToken
+		}
+		return []byte(uc.jwtSecret), nil
+	})
+
+	if err != nil || !token.Valid {
+		return 0, domain.ErrInvalidToken
+	}
+
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok {
+		return 0, domain.ErrInvalidToken
+	}
+
+	userID, ok := claims["user_id"].(float64)
+	if !ok {
+		return 0, domain.ErrInvalidToken
+	}
+
+	// Verify session exists
+	hashedToken := uc.hashToken(tokenString)
+	session, err := uc.sessionRepo.GetByToken(ctx, hashedToken)
+	if err != nil {
+		return 0, domain.ErrSessionNotFound
+	}
+
+	if session.IsExpired() {
+		return 0, domain.ErrSessionExpired
+	}
+
+	return int(userID), nil
+}
+
+// Logout deletes user session
+func (uc *VKAuthUseCase) Logout(ctx context.Context, tokenString string) error {
+	hashedToken := uc.hashToken(tokenString)
+	return uc.sessionRepo.DeleteByToken(ctx, hashedToken)
+}
+
+// hashToken creates SHA256 hash of token for storage
+func (uc *VKAuthUseCase) hashToken(token string) string {
+	h := sha256.New()
+	h.Write([]byte(token))
+	return hex.EncodeToString(h.Sum(nil))
+}
