@@ -109,32 +109,6 @@ func Load() (*Config, error) {
 		},
 	}
 
-	// Set defaults
-	if config.Server.Host == "" {
-		config.Server.Host = "localhost"
-	}
-	if config.Server.Port == 0 {
-		config.Server.Port = 8080
-	}
-	if config.Server.Env == "" {
-		config.Server.Env = "development"
-	}
-	if config.JWT.AccessExpiryMin == 0 {
-		config.JWT.AccessExpiryMin = 15
-	}
-	if config.JWT.RefreshExpiryDay == 0 {
-		config.JWT.RefreshExpiryDay = 30
-	}
-	if config.Storage.Type == "" {
-		config.Storage.Type = "local"
-	}
-	if config.Storage.Path == "" {
-		config.Storage.Path = "./uploads"
-	}
-	if config.Logging.Level == "" {
-		config.Logging.Level = "info"
-	}
-
 	// Validate critical configuration
 	if err := config.Validate(); err != nil {
 		return nil, err
