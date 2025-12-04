@@ -1,24 +1,26 @@
-.PHONY: help run build test docker-up docker-down migrate-up migrate-down migrate-create seed clean
+.PHONY: help run build test docker-up docker-down docker-rebuild docker-logs migrate-up migrate-down migrate-create seed clean
 
 help:
 	@echo "Available commands:"
-	@echo "  make run          - Run the application"
-	@echo "  make build        - Build the application"
-	@echo "  make test         - Run tests"
-	@echo "  make docker-up    - Start Docker containers"
-	@echo "  make docker-down  - Stop Docker containers"
-	@echo "  make migrate-up   - Run database migrations"
-	@echo "  make migrate-down - Rollback database migrations"
-	@echo "  make seed         - Seed database with test data"
-	@echo "  make clean        - Clean build artifacts"
+	@echo "  make run             - Run the application locally"
+	@echo "  make build           - Build the application"
+	@echo "  make test            - Run tests"
+	@echo "  make docker-up       - Start Docker containers"
+	@echo "  make docker-down     - Stop Docker containers"
+	@echo "  make docker-rebuild  - Rebuild and restart server container"
+	@echo "  make docker-logs     - Show server logs"
+	@echo "  make migrate-up      - Run database migrations"
+	@echo "  make migrate-down    - Rollback database migrations"
+	@echo "  make seed            - Seed database with test data"
+	@echo "  make clean           - Clean build artifacts"
 
 run:
 	@echo "Running application..."
-	go run cmd/api/main.go
+	go run cmd/server/main.go
 
 build:
 	@echo "Building application..."
-	go build -o bin/api cmd/api/main.go
+	go build -o bin/server cmd/server/main.go
 
 test:
 	@echo "Running tests..."
@@ -34,7 +36,15 @@ docker-down:
 	@echo "Stopping Docker containers..."
 	docker-compose down
 
-migrate-up: docker-up
+docker-rebuild:
+	@echo "Rebuilding and restarting server..."
+	./scripts/docker-rebuild.sh
+
+docker-logs:
+	@echo "Showing server logs (Ctrl+C to exit)..."
+	docker logs -f dating_server
+
+migrate-up:
 	@echo "Applying migrations via Docker..."
 	docker compose run --rm migrate -path=/migrations -database "postgresql://dating_user:dating_pass@postgres:5432/dating_db?sslmode=disable" up
 

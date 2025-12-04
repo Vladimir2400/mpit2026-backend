@@ -19,6 +19,17 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Print configuration (without secrets)
+	fmt.Printf("=== Configuration ===\n")
+	fmt.Printf("Server: %s:%d (env: %s)\n", cfg.Server.Host, cfg.Server.Port, cfg.Server.Env)
+	fmt.Printf("Database: %s:%d/%s (user: %s, ssl: %s)\n",
+		cfg.Database.Host, cfg.Database.Port, cfg.Database.DBName,
+		cfg.Database.User, cfg.Database.SSLMode)
+	fmt.Printf("Redis: %s:%d (db: %d)\n", cfg.Redis.Host, cfg.Redis.Port, cfg.Redis.DB)
+	fmt.Printf("Storage: %s (%s)\n", cfg.Storage.Type, cfg.Storage.Path)
+	fmt.Printf("Log Level: %s\n", cfg.Logging.Level)
+	fmt.Printf("====================\n\n")
+
 	// Initialize dependency injection container
 	app, err := container.NewContainer(cfg)
 	if err != nil {
