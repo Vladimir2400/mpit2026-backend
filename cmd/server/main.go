@@ -11,6 +11,13 @@ import (
 	"github.com/gdugdh24/mpit2026-backend/internal/infrastructure/container"
 )
 
+func maskSecret(secret string) string {
+	if len(secret) <= 4 {
+		return "****"
+	}
+	return secret[:4] + "****" + secret[len(secret)-4:]
+}
+
 func main() {
 	// Load configuration
 	cfg, err := config.Load()
@@ -26,6 +33,7 @@ func main() {
 		cfg.Database.Host, cfg.Database.Port, cfg.Database.DBName,
 		cfg.Database.User, cfg.Database.SSLMode)
 	fmt.Printf("Redis: %s:%d (db: %d)\n", cfg.Redis.Host, cfg.Redis.Port, cfg.Redis.DB)
+	fmt.Printf("VK: App ID: %d, Secret Key: %s\n", cfg.VK.AppID, maskSecret(cfg.VK.SecretKey))
 	fmt.Printf("Storage: %s (%s)\n", cfg.Storage.Type, cfg.Storage.Path)
 	fmt.Printf("Log Level: %s\n", cfg.Logging.Level)
 	fmt.Printf("====================\n\n")

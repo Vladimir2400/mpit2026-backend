@@ -37,11 +37,11 @@ func NewContainer(cfg *config.Config) (*Container, error) {
 		return nil, fmt.Errorf("failed to initialize database: %w", err)
 	}
 
-	// Initialize Redis
-	redisClient, err := database.NewRedisClient(&cfg.Redis)
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize redis: %w", err)
-	}
+	// // Initialize Redis
+	// redisClient, err := database.NewRedisClient(&cfg.Redis)
+	// if err != nil {
+	// 	return nil, fmt.Errorf("failed to initialize redis: %w", err)
+	// }
 
 	// Initialize Gemini Client
 	geminiClient, err := gemini.NewGeminiClient(cfg.GeminiAPIKey)
@@ -65,7 +65,7 @@ func NewContainer(cfg *config.Config) (*Container, error) {
 		userRepo,
 		profileRepo,
 		sessionRepo,
-		cfg.JWT.AccessSecret, // VK secret should be separate, using JWT for now
+		cfg.VK.SecretKey,
 		cfg.JWT.AccessSecret,
 	)
 
@@ -121,7 +121,7 @@ func NewContainer(cfg *config.Config) (*Container, error) {
 	return &Container{
 		Config: cfg,
 		DB:     db,
-		Redis:  redisClient,
+		Redis:  nil,
 		Server: srv,
 		Gemini: geminiClient,
 	}, nil
