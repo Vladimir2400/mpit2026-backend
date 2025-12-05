@@ -20,7 +20,8 @@ func NewAuthHandler(authUseCase *auth.VKAuthUseCase) *AuthHandler {
 
 // VKAuthRequest represents VK authentication request
 type VKAuthRequest struct {
-	VKParams map[string]string `json:"vk_params" binding:"required"`
+	VKParams    map[string]string `json:"vk_params" binding:"required"`
+	AccessToken string            `json:"access_token" binding:"required"`
 }
 
 // AuthResponse is the response structure
@@ -58,7 +59,7 @@ func (h *AuthHandler) VKAuth(c *gin.Context) {
 	deviceInfo := c.GetHeader("User-Agent")
 	ipAddress := c.ClientIP()
 
-	result, err := h.authUseCase.AuthenticateVK(c.Request.Context(), req.VKParams, deviceInfo, ipAddress)
+	result, err := h.authUseCase.AuthenticateVK(c.Request.Context(), req.VKParams, req.AccessToken, deviceInfo, ipAddress)
 	if err != nil {
 		statusCode := http.StatusInternalServerError
 		message := "authentication failed"

@@ -13,6 +13,7 @@ import (
 
 	"github.com/gdugdh24/mpit2026-backend/internal/domain"
 	"github.com/gdugdh24/mpit2026-backend/internal/repository"
+	"github.com/gdugdh24/mpit2026-backend/pkg/vkapi"
 	"github.com/golang-jwt/jwt/v5"
 )
 
@@ -21,6 +22,7 @@ type VKAuthUseCase struct {
 	sessionRepo repository.SessionRepository
 	vkSecret    string
 	jwtSecret   string
+	vkAPIClient *vkapi.Client
 }
 
 func NewVKAuthUseCase(
@@ -34,6 +36,7 @@ func NewVKAuthUseCase(
 		sessionRepo: sessionRepo,
 		vkSecret:    vkSecret,
 		jwtSecret:   jwtSecret,
+		vkAPIClient: vkapi.NewClient(),
 	}
 }
 
@@ -58,7 +61,7 @@ type AuthResponse struct {
 }
 
 // AuthenticateVK authenticates user via VK Mini App launch params
-func (uc *VKAuthUseCase) AuthenticateVK(ctx context.Context, params map[string]string, deviceInfo, ipAddress string) (*AuthResponse, error) {
+func (uc *VKAuthUseCase) AuthenticateVK(ctx context.Context, params map[string]string, accessToken, deviceInfo, ipAddress string) (*AuthResponse, error) {
 	// Verify VK signature
 	if err := uc.verifyVKSignature(params); err != nil {
 		return nil, domain.ErrInvalidVKSignature
@@ -70,19 +73,33 @@ func (uc *VKAuthUseCase) AuthenticateVK(ctx context.Context, params map[string]s
 		return nil, domain.ErrInvalidInput
 	}
 
+	// Fetch user info from VK API
+	vkUserInfo, err := uc.vkAPIClient.GetUserInfo(accessToken, vkID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch VK user info: %w", err)
+	}
+
 	// Try to get existing user
 	user, err := uc.userRepo.GetByVKID(ctx, vkID)
 	isNewUser := false
 
 	if err == domain.ErrUserNotFound {
-		// Create new user
-		user, err = uc.createUserFromVK(ctx, vkID, params)
+		// Create new user with VK data
+		user, err = uc.createUserFromVKInfo(ctx, vkUserInfo, accessToken)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create user: %w", err)
 		}
 		isNewUser = true
 	} else if err != nil {
 		return nil, fmt.Errorf("failed to get user: %w", err)
+	} else {
+		// Update existing user's access token
+		tokenExpiry := time.Now().Add(24 * time.Hour) // VK tokens usually expire in 24 hours
+		user.VKAccessToken = &accessToken
+		user.VKTokenExpiresAt = &tokenExpiry
+		if err := uc.userRepo.Update(ctx, user); err != nil {
+			return nil, fmt.Errorf("failed to update user token: %w", err)
+		}
 	}
 
 	// Update online status
@@ -153,15 +170,35 @@ func (uc *VKAuthUseCase) verifyVKSignature(params map[string]string) error {
 	return nil
 }
 
-// createUserFromVK creates a new user from VK params
-func (uc *VKAuthUseCase) createUserFromVK(ctx context.Context, vkID int, params map[string]string) (*domain.User, error) {
-	// Default values - in real app you'd fetch from VK API
+// createUserFromVKInfo creates a new user from VK API data
+func (uc *VKAuthUseCase) createUserFromVKInfo(ctx context.Context, vkInfo *vkapi.VKUserInfo, accessToken string) (*domain.User, error) {
+	// Parse gender
+	gender := domain.GenderMale
+	if vkInfo.Sex == 1 {
+		gender = domain.GenderFemale
+	}
+
+	// Parse birthdate (VK format: DD.MM.YYYY or DD.MM)
+	birthDate := time.Now().AddDate(-20, 0, 0) // default 20 years old
+	if vkInfo.BirthDate != "" {
+		// Try to parse full date
+		if t, err := time.Parse("2.1.2006", vkInfo.BirthDate); err == nil {
+			birthDate = t
+		} else if t, err := time.Parse("02.01.2006", vkInfo.BirthDate); err == nil {
+			birthDate = t
+		}
+	}
+
+	tokenExpiry := time.Now().Add(24 * time.Hour)
+
 	user := &domain.User{
-		VKID:       vkID,
-		Gender:     domain.GenderMale, // Should be fetched from VK API
-		BirthDate:  time.Now().AddDate(-20, 0, 0), // Should be fetched from VK API
-		IsVerified: false,
-		IsOnline:   true,
+		VKID:             vkInfo.ID,
+		VKAccessToken:    &accessToken,
+		VKTokenExpiresAt: &tokenExpiry,
+		Gender:           gender,
+		BirthDate:        birthDate,
+		IsVerified:       false,
+		IsOnline:         true,
 	}
 
 	if err := uc.userRepo.Create(ctx, user); err != nil {
