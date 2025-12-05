@@ -12,6 +12,7 @@ type Config struct {
 	Database   DatabaseConfig
 	Redis      RedisConfig
 	JWT        JWTConfig
+	VK         VKConfig
 	Encryption EncryptionConfig
 	Storage    StorageConfig
 	Logging    LoggingConfig
@@ -46,6 +47,11 @@ type JWTConfig struct {
 	RefreshSecret    string
 	AccessExpiryMin  int
 	RefreshExpiryDay int
+}
+
+type VKConfig struct {
+	SecretKey string
+	AppID     int
 }
 
 type EncryptionConfig struct {
@@ -97,6 +103,10 @@ func Load() (*Config, error) {
 			AccessExpiryMin:  viper.GetInt("JWT_ACCESS_EXPIRY_MIN"),
 			RefreshExpiryDay: viper.GetInt("JWT_REFRESH_EXPIRY_DAY"),
 		},
+		VK: VKConfig{
+			SecretKey: viper.GetString("VK_SECRET_KEY"),
+			AppID:     viper.GetInt("VK_APP_ID"),
+		},
 		Encryption: EncryptionConfig{
 			AESKey: viper.GetString("AES_ENCRYPTION_KEY"),
 		},
@@ -139,6 +149,12 @@ func (c *Config) Validate() error {
 	}
 	if len(c.Encryption.AESKey) != 32 {
 		return fmt.Errorf("AES encryption key must be exactly 32 characters for AES-256")
+	}
+	if c.VK.SecretKey == "" {
+		return fmt.Errorf("VK secret key is required")
+	}
+	if len(c.VK.SecretKey) < 16 {
+		return fmt.Errorf("VK secret key must be at least 16 characters")
 	}
 	return nil
 }

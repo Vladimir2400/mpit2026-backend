@@ -55,7 +55,7 @@ func NewContainer(cfg *config.Config) (*Container, error) {
 	authUseCase := auth.NewVKAuthUseCase(
 		userRepo,
 		sessionRepo,
-		cfg.JWT.AccessSecret, // VK secret should be separate, using JWT for now
+		cfg.VK.SecretKey,
 		cfg.JWT.AccessSecret,
 	)
 

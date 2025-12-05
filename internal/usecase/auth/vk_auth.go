@@ -129,10 +129,11 @@ func (uc *VKAuthUseCase) verifyVKSignature(params map[string]string) error {
 		return domain.ErrInvalidVKSignature
 	}
 
-	// Create query string from params (excluding sign)
+	// Create query string from params (excluding sign and vk_access_token_settings)
+	// vk_access_token_settings is added by VK after signature generation
 	var keys []string
 	for k := range params {
-		if k != "sign" && strings.HasPrefix(k, "vk_") {
+		if k != "sign" && k != "vk_access_token_settings" && strings.HasPrefix(k, "vk_") {
 			keys = append(keys, k)
 		}
 	}
