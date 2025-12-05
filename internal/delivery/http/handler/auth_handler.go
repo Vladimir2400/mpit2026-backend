@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/gdugdh24/mpit2026-backend/internal/usecase/auth"
@@ -50,6 +51,9 @@ func (h *AuthHandler) VKAuth(c *gin.Context) {
 		})
 		return
 	}
+
+	// Debug logging
+	c.Writer.Header().Set("X-Debug-VK-Params", fmt.Sprintf("%+v", req.VKParams))
 
 	deviceInfo := c.GetHeader("User-Agent")
 	ipAddress := c.ClientIP()

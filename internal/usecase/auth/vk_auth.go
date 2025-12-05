@@ -109,6 +109,7 @@ func (uc *VKAuthUseCase) AuthenticateVK(ctx context.Context, params map[string]s
 func (uc *VKAuthUseCase) verifyVKSignature(params map[string]string) error {
 	sign := params["sign"]
 	if sign == "" {
+		fmt.Println("DEBUG: No sign parameter found")
 		return domain.ErrInvalidVKSignature
 	}
 
@@ -131,6 +132,9 @@ func (uc *VKAuthUseCase) verifyVKSignature(params map[string]string) error {
 		queryString.WriteString(url.QueryEscape(params[k]))
 	}
 
+	fmt.Printf("DEBUG: Query string: %s\n", queryString.String())
+	fmt.Printf("DEBUG: VK Secret length: %d\n", len(uc.vkSecret))
+
 	// Calculate HMAC-SHA256
 	h := hmac.New(sha256.New, []byte(uc.vkSecret))
 	h.Write([]byte(queryString.String()))
@@ -138,6 +142,9 @@ func (uc *VKAuthUseCase) verifyVKSignature(params map[string]string) error {
 	calculatedSign = strings.TrimRight(calculatedSign, "=")
 	calculatedSign = strings.ReplaceAll(calculatedSign, "+", "-")
 	calculatedSign = strings.ReplaceAll(calculatedSign, "/", "_")
+
+	fmt.Printf("DEBUG: Received sign: %s\n", sign)
+	fmt.Printf("DEBUG: Calculated sign: %s\n", calculatedSign)
 
 	if sign != calculatedSign {
 		return domain.ErrInvalidVKSignature
