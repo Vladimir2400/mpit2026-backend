@@ -8,13 +8,14 @@ import (
 )
 
 type Config struct {
-	Server     ServerConfig
-	Database   DatabaseConfig
-	Redis      RedisConfig
-	JWT        JWTConfig
-	Encryption EncryptionConfig
-	Storage    StorageConfig
-	Logging    LoggingConfig
+	Server         ServerConfig
+	Database       DatabaseConfig
+	Redis          RedisConfig
+	JWT            JWTConfig
+	Encryption     EncryptionConfig
+	Storage        StorageConfig
+	Logging        LoggingConfig
+	GeminiAPIKey string
 }
 
 type ServerConfig struct {
@@ -107,6 +108,7 @@ func Load() (*Config, error) {
 		Logging: LoggingConfig{
 			Level: viper.GetString("LOG_LEVEL"),
 		},
+		GeminiAPIKey: viper.GetString("GEMINI_API_KEY"),
 	}
 
 	// Validate critical configuration
