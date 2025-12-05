@@ -7,7 +7,6 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
-	"net/url"
 	"sort"
 	"strings"
 	"time"
@@ -129,7 +128,8 @@ func (uc *VKAuthUseCase) verifyVKSignature(params map[string]string) error {
 		}
 		queryString.WriteString(k)
 		queryString.WriteString("=")
-		queryString.WriteString(url.QueryEscape(params[k]))
+		// VK doesn't use URL encoding for signature verification
+		queryString.WriteString(params[k])
 	}
 
 	fmt.Printf("DEBUG: Query string: %s\n", queryString.String())
